@@ -458,7 +458,7 @@ with st.sidebar:
 
 
 # Load fresh DB records
-routes = get_routes()
+routes = [dict(route) for route in get_routes()]
 stops = get_stops()
 trips = get_trips()
 ridership = get_ridership()
