@@ -34,7 +34,7 @@ The app uses SQLite database storage (`database/smart_transit.db`).
 - **📊 Executive Dashboard**: KPI cards, real-time ridership trends, active fleet counter, and route passenger share.
 - **🚨 Overcrowded Bus Alert Desk**: Queue of passenger photo reports with one-click extra bus deployment.
 - **🚌 Routes & Stop Sequences**: Manage city lines, distances, and custom intermediate stop orders.
-- **📍 Stops & ⏱️ Trips**: Full directory management for bus stops and departure timetables.
+- **📍 Stops & ⏱️ Trips**: Manage bus stops and departure timetables, including editing a trip's route code, bus, date, and times.
 - **👥 Ridership Logs**: Historical passenger load tracker per trip.
 - **⚡ Frequency Planner**: Calculates recommended trips/day using formula:
   $$\text{Recommended Trips/Day} = \lceil \text{Avg Daily Passengers} / \text{Target Bus Capacity} \rceil$$

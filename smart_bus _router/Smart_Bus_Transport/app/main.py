@@ -1726,6 +1726,103 @@ else:
                 st.dataframe(df_trips, use_container_width=True, hide_index=True)
 
                 st.divider()
+                st.subheader("✏️ Edit Scheduled Trip")
+                trip_edit_options = {
+                    f"Trip #{trip['id']} (Bus {trip['bus_number']} on Route {trip['route_name']} • {trip['departure']}-{trip['arrival']})": trip
+                    for trip in trips_with_r
+                }
+                selected_trip_label = st.selectbox(
+                    "Select Trip to Edit",
+                    list(trip_edit_options),
+                    key="edit_scheduled_trip_select",
+                )
+                selected_trip_to_edit = trip_edit_options[selected_trip_label]
+
+                route_edit_options = {
+                    f"Route {route['route_name']} ({route['source']} ➔ {route['destination']}) — ID {route['id']}": route
+                    for route in routes
+                }
+                route_edit_labels = list(route_edit_options)
+                current_route_index = next(
+                    (
+                        index
+                        for index, label in enumerate(route_edit_labels)
+                        if route_edit_options[label]["id"] == selected_trip_to_edit["route_id"]
+                    ),
+                    0,
+                )
+
+                with st.form(f"edit_trip_form_{selected_trip_to_edit['id']}"):
+                    e_trip_route_label = st.selectbox(
+                        "Route Code",
+                        route_edit_labels or ["No routes available"],
+                        index=current_route_index,
+                        key=f"edit_trip_route_{selected_trip_to_edit['id']}",
+                    )
+                    e_trip_route_id = route_edit_options[e_trip_route_label]["id"] if route_edit_labels else None
+
+                    e_trip_c1, e_trip_c2, e_trip_c3 = st.columns(3)
+                    e_trip_bus = e_trip_c1.text_input(
+                        "Bus Number",
+                        value=selected_trip_to_edit["bus_number"] or "",
+                        key=f"edit_trip_bus_{selected_trip_to_edit['id']}",
+                    )
+                    e_trip_date = e_trip_c2.date_input(
+                        "Trip Date",
+                        value=date.fromisoformat(str(selected_trip_to_edit["trip_date"] or date.today().isoformat())),
+                        key=f"edit_trip_date_{selected_trip_to_edit['id']}",
+                    )
+                    e_trip_departure = e_trip_c3.time_input(
+                        "Departure Time",
+                        value=time.fromisoformat(str(selected_trip_to_edit["departure"] or "09:00")),
+                        key=f"edit_trip_departure_{selected_trip_to_edit['id']}",
+                    )
+                    e_trip_arrival = st.time_input(
+                        "Arrival Time",
+                        value=time.fromisoformat(str(selected_trip_to_edit["arrival"] or "10:15")),
+                        key=f"edit_trip_arrival_{selected_trip_to_edit['id']}",
+                    )
+                    save_trip_changes = st.form_submit_button(
+                        "💾 Save Trip Changes",
+                        width="stretch",
+                    )
+
+                if save_trip_changes:
+                    e_trip_bus = e_trip_bus.strip()
+                    if e_trip_route_id is None:
+                        st.error("Please select a route.")
+                    elif not e_trip_bus:
+                        st.error("Bus number is required.")
+                    elif e_trip_departure >= e_trip_arrival:
+                        st.error("Departure time must be before arrival time.")
+                    elif bus_number_exists(e_trip_bus, exclude_trip_id=selected_trip_to_edit["id"]):
+                        st.error(f"Bus number '{e_trip_bus}' is already assigned to another trip.")
+                    else:
+                        departure_str = e_trip_departure.strftime("%H:%M")
+                        arrival_str = e_trip_arrival.strftime("%H:%M")
+                        trip_date_str = e_trip_date.isoformat()
+                        has_conflict, conflict_message = check_bus_schedule_conflict(
+                            e_trip_bus,
+                            departure_str,
+                            arrival_str,
+                            trip_date_str,
+                            exclude_trip_id=selected_trip_to_edit["id"],
+                        )
+                        if has_conflict:
+                            st.error(f"Cannot update trip: Bus {e_trip_bus} has a {conflict_message}")
+                        else:
+                            update_trip(
+                                selected_trip_to_edit["id"],
+                                e_trip_route_id,
+                                e_trip_bus,
+                                trip_date_str,
+                                departure_str,
+                                arrival_str,
+                            )
+                            st.success("Scheduled trip updated successfully.")
+                            st.rerun()
+
+                st.divider()
                 st.subheader("🗑️ Delete Scheduled Trip")
                 trip_del_map = {f"Trip #{t['id']} (Bus {t['bus_number']} on Route {t['route_name']} • {t['departure']}-{t['arrival']})": t["id"] for t in trips_with_r}
                 sel_del_label = st.selectbox("Select Trip to Remove", list(trip_del_map.keys()))
@@ -1758,10 +1855,26 @@ else:
 
                 if t_submit:
                     t_bus = t_bus.strip()
+                    existing_bus_trip = next(
+                        (
+                            trip
+                            for trip in trips_with_r
+                            if str(trip.get("bus_number") or "").strip().casefold() == t_bus.casefold()
+                        ),
+                        None,
+                    )
                     if not t_r_id:
                         st.error("Please select a route.")
                     elif not t_bus:
                         st.error("Bus number is required.")
+                    elif existing_bus_trip:
+                        st.error(
+                            f"Conflict: Bus {t_bus} is already assigned to Trip #{existing_bus_trip['id']} "
+                            f"on Route {existing_bus_trip.get('route_name') or 'Unknown'} "
+                            f"({existing_bus_trip.get('trip_date') or 'date not set'}, "
+                            f"{existing_bus_trip.get('departure')}–{existing_bus_trip.get('arrival')}). "
+                            "Each bus number can only be assigned to one scheduled trip."
+                        )
                     elif t_dep >= t_arr:
                         st.error("Departure time must be before arrival time.")
                     else:
@@ -1773,9 +1886,13 @@ else:
                         if has_conflict:
                             st.error(f"Cannot schedule trip: Bus {t_bus} has a {conf_msg}")
                         else:
-                            add_trip(t_r_id, t_bus, date_str, dep_str, arr_str)
-                            st.success(f"Trip scheduled for Bus {t_bus} on Route!")
-                            st.rerun()
+                            try:
+                                add_trip(t_r_id, t_bus, date_str, dep_str, arr_str)
+                            except ValueError as error:
+                                st.error(f"Cannot schedule trip: {error}")
+                            else:
+                                st.success(f"Trip scheduled for Bus {t_bus} on Route!")
+                                st.rerun()
 
 
     # --------------------------------------------------------
