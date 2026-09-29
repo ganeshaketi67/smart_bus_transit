@@ -1,6 +1,6 @@
 """
 Object-Oriented Scheduling Model matching OOPJ specifications.
-Provides Bus, Route, Trip, and Scheduler classes for transport scheduling and collision detection.
+Provides Bus, Route, Trip, and Scheduler classes for transport scheduling, fare calculations, and collision detection.
 """
 
 from typing import List, Optional, Tuple
@@ -18,14 +18,31 @@ class Bus:
 
 
 class Route:
-    def __init__(self, name: str, origin: str, destination: str, distance: float = 0.0):
+    def __init__(
+        self,
+        name: str,
+        origin: str,
+        destination: str,
+        distance: float = 0.0,
+        base_fare: float = 10.0,
+        fare_per_km: float = 2.5,
+        min_fare: float = 10.0
+    ):
         self.name = name
         self.origin = origin
         self.destination = destination
         self.distance = distance
+        self.base_fare = base_fare
+        self.fare_per_km = fare_per_km
+        self.min_fare = min_fare
+
+    def calculate_fare(self, distance_traversed: float) -> float:
+        """Calculate dynamic ticket cost based on distance traversed."""
+        raw_fare = self.base_fare + (distance_traversed * self.fare_per_km)
+        return max(self.min_fare, round(raw_fare))
 
     def __repr__(self):
-        return f"<Route {self.name}: {self.origin} -> {self.destination}>"
+        return f"<Route {self.name}: {self.origin} -> {self.destination} ({self.distance}km, ₹{self.base_fare}+₹{self.fare_per_km}/km)>"
 
 
 class Trip:
