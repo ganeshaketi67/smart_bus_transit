@@ -465,6 +465,15 @@ ridership = get_ridership()
 alerts = get_overcrowding_alerts()
 
 
+def _get_route_schedule_rows(route_id):
+    return [{
+        "Bus Number": trip["bus_number"],
+        "Trip Date": trip["trip_date"] or "Not set",
+        "Departure": trip["departure"],
+        "Arrival": trip["arrival"],
+    } for trip in trips if trip["route_id"] == route_id]
+
+
 # ============================================================
 # PASSENGER APP SECTION
 # ============================================================
@@ -1430,21 +1439,35 @@ else:
 
         with tab_view:
             if routes:
-                df_routes = pd.DataFrame(
-                    routes,
-                    columns=["ID", "Route Code", "Start Point", "Final Destination", "Distance (km)", "Base Fare (₹)", "Fare/km (₹)", "Min Fare (₹)"]
-                )
+                df_routes = pd.DataFrame([{
+                    "ID": route["id"],
+                    "Route Code": route["route_name"],
+                    "Start Point": route["source"],
+                    "Final Destination": route["destination"],
+                    "Distance (km)": route["distance"],
+                    "Base Fare (₹)": route["base_fare"],
+                    "Fare/km (₹)": route["fare_per_km"],
+                    "Min Fare (₹)": route["min_fare"],
+                } for route in routes])
                 st.dataframe(df_routes, use_container_width=True, hide_index=True)
 
                 st.subheader("🔍 Route Stop Sequences")
                 for r in routes:
                     stops_seq = get_route_stops(r["id"])
+                    route_schedule = _get_route_schedule_rows(r["id"])
                     with st.expander(f"Route {r['route_name']} ({r['source']} ➔ {r['destination']}) — {len(stops_seq)} stops (Fare: ₹{r.get('base_fare', 10)}+₹{r.get('fare_per_km', 2.5)}/km)"):
                         if stops_seq:
                             seq_str = " ➔ ".join([f"**{s['stop_name']}** ({s.get('distance_from_origin', 0.0)}km)" for s in stops_seq])
                             st.markdown(f"**Stop Sequence & Cumulative Distances:** {seq_str}")
                         else:
                             st.caption("No custom stops specified for this route yet.")
+
+                        st.markdown("**Scheduled Trips**")
+                        if route_schedule:
+                            st.dataframe(pd.DataFrame(route_schedule), use_container_width=True, hide_index=True)
+                            st.caption("Times show departure from the route origin and arrival at its destination.")
+                        else:
+                            st.caption("No trips are scheduled for this route.")
 
                 st.divider()
                 st.subheader("✏️ Edit or Delete Route")
@@ -1595,6 +1618,14 @@ else:
             """, unsafe_allow_html=True)
 
             curr_route_stops = get_route_stops(target_route["id"])
+            route_schedule = _get_route_schedule_rows(target_route["id"])
+            st.subheader(f"🕒 Scheduled Trips for Route {target_route['route_name']}")
+            if route_schedule:
+                st.dataframe(pd.DataFrame(route_schedule), use_container_width=True, hide_index=True)
+                st.caption("Times show departure from the route origin and arrival at its destination; intermediate-stop times are not stored.")
+            else:
+                st.info("No trips are scheduled for this route.")
+
             existing_intermediate = []
             for s in curr_route_stops:
                 s_name = s["stop_name"]
@@ -1682,11 +1713,17 @@ else:
 
         with tab_view_t:
             if trips_with_r:
-                df_trips = pd.DataFrame(
-                    trips_with_r,
-                    columns=["ID", "Route ID", "Bus Number", "Trip Date", "Departure", "Arrival", "Route Code", "Start Point", "Final Destination", "Base Fare", "Fare/km"]
-                )
-                st.dataframe(df_trips[["ID", "Route Code", "Bus Number", "Start Point", "Final Destination", "Trip Date", "Departure", "Arrival"]], use_container_width=True, hide_index=True)
+                df_trips = pd.DataFrame([{
+                    "ID": trip["id"],
+                    "Route Code": trip["route_name"],
+                    "Bus Number": trip["bus_number"],
+                    "Start Point": trip["source"],
+                    "Final Destination": trip["destination"],
+                    "Trip Date": trip["trip_date"],
+                    "Departure": trip["departure"],
+                    "Arrival": trip["arrival"],
+                } for trip in trips_with_r])
+                st.dataframe(df_trips, use_container_width=True, hide_index=True)
 
                 st.divider()
                 st.subheader("🗑️ Delete Scheduled Trip")
@@ -1754,6 +1791,7 @@ else:
         """, unsafe_allow_html=True)
 
         riders_with_t = get_ridership_with_trips()
+        trips_with_r = get_trips_with_routes()
         analytics = get_route_ridership_analytics()
 
         if analytics:

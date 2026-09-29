@@ -313,7 +313,7 @@ def get_routes():
 
     routes = cursor.fetchall()
     connection.close()
-    return routes
+    return [dict(route) for route in routes]
 
 
 def get_route_by_id(route_id):
@@ -445,7 +445,7 @@ def get_route_stops(route_id):
         (route_id,),
     ).fetchall()
     connection.close()
-    return stops
+    return [dict(stop) for stop in stops]
 
 
 def replace_route_stops(route_id, stop_names, stop_distances=None):
@@ -973,14 +973,16 @@ def get_trips_with_routes():
             routes.route_name,
             routes.source,
             routes.destination,
+            routes.distance,
             routes.base_fare,
-            routes.fare_per_km
+            routes.fare_per_km,
+            routes.min_fare
         FROM trips
         LEFT JOIN routes ON routes.id = trips.route_id
         ORDER BY trips.id DESC
     """).fetchall()
     connection.close()
-    return trips
+    return [dict(trip) for trip in trips]
 
 
 # ============================================================
