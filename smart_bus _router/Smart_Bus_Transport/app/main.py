@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import math
 
 import streamlit as st
@@ -995,33 +995,40 @@ else:
         st.markdown("""
             <div class="app-hero-header">
                 <div class="app-hero-title">📊 Executive Fleet Dashboard</div>
-                <div class="app-hero-desc">Real-time city transport metrics, passenger volumes, active buses, and distance-weighted operational revenue.</div>
+                <div class="app-hero-desc">City transport metrics, ridership, and distance-weighted revenue from yesterday onward.</div>
             </div>
         """, unsafe_allow_html=True)
+
+        if st.button("Refresh dashboard", icon=":material/refresh:"):
+            st.rerun()
 
         if not routes and not stops:
             st.warning("⚠️ No transit data found. Click '🌱 Populate Sample City Data' in the sidebar to populate records.")
 
         # KPI METRICS
-        analytics = get_route_ridership_analytics()
-        total_passengers = sum(row[3] for row in ridership) if ridership else 0
-        unique_buses = len(set(row[2] for row in trips if row[2])) if trips else 0
+        ridership_start_date = (date.today() - timedelta(days=1)).isoformat()
+        analytics = get_route_ridership_analytics(since_date=ridership_start_date)
+        total_passengers = sum(
+            int(route["total_passengers"] or 0) for route in analytics
+        )
         pending_alerts_cnt = len([a for a in alerts if a["status"] == "Pending"])
 
-        # Compute accurate revenue based on each route's distance and fare rates
+        # Apply each route's fare to its riders in the same period as the Ridership page.
         total_dynamic_revenue = 0
-        if analytics:
-            for a in analytics:
-                tot_p = a.get("total_passengers", 0)
-                b_fare = float(a.get("base_fare") or 10.0)
-                f_rate = float(a.get("fare_per_km") or 2.5)
-                dist_val = float(a.get("distance") or 10.0)
-                avg_route_fare = max(10.0, round(b_fare + (dist_val * 0.7 * f_rate)))
-                total_dynamic_revenue += (tot_p * avg_route_fare)
-        else:
-            total_dynamic_revenue = total_passengers * 25
+        for route in analytics:
+            base_fare = float(route.get("base_fare") or 10.0)
+            fare_per_km = float(route.get("fare_per_km") or 2.5)
+            distance = float(route.get("distance") or 10.0)
+            average_route_fare = max(
+                10.0, round(base_fare + (distance * 0.7 * fare_per_km))
+            )
+            route["computed_avg_fare"] = average_route_fare
+            route["computed_revenue"] = (
+                int(route.get("total_passengers") or 0) * average_route_fare
+            )
+            total_dynamic_revenue += route["computed_revenue"]
 
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             st.markdown(f"""
                 <div class="stat-card">
@@ -1055,30 +1062,20 @@ else:
         with c4:
             st.markdown(f"""
                 <div class="stat-card">
-                    <div class="stat-icon">🚍</div>
-                    <div class="stat-label">Active Fleet</div>
-                    <div class="stat-val">{unique_buses}</div>
-                    <div class="stat-sub">Buses Deployed</div>
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-label">Total Riders</div>
+                    <div class="stat-val">{total_passengers:,}</div>
+                    <div class="stat-sub">Since {ridership_start_date} • {pending_alerts_cnt} Alert(s) Pending</div>
                 </div>
             """, unsafe_allow_html=True)
 
         with c5:
             st.markdown(f"""
                 <div class="stat-card">
-                    <div class="stat-icon">👥</div>
-                    <div class="stat-label">Total Riders</div>
-                    <div class="stat-val">{total_passengers:,}</div>
-                    <div class="stat-sub">{pending_alerts_cnt} Alert(s) Pending</div>
-                </div>
-            """, unsafe_allow_html=True)
-
-        with c6:
-            st.markdown(f"""
-                <div class="stat-card">
                     <div class="stat-icon">💰</div>
                     <div class="stat-label">Total Revenue</div>
                     <div class="stat-val">₹{total_dynamic_revenue:,.0f}</div>
-                    <div class="stat-sub">Distance-Weighted Fares</div>
+                    <div class="stat-sub">From riders since {ridership_start_date}</div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -1089,14 +1086,6 @@ else:
             sorted_by_pass = sorted(analytics, key=lambda x: x["total_passengers"], reverse=True)
             top_pass_route = sorted_by_pass[0]
             
-            # Compute route revenues
-            for a in analytics:
-                b_fare = float(a.get("base_fare") or 10.0)
-                f_rate = float(a.get("fare_per_km") or 2.5)
-                dist_val = float(a.get("distance") or 10.0)
-                a["computed_avg_fare"] = max(10.0, round(b_fare + (dist_val * 0.7 * f_rate)))
-                a["computed_revenue"] = a["total_passengers"] * a["computed_avg_fare"]
-
             top_rev_route = max(analytics, key=lambda x: x["computed_revenue"])
 
             h_c1, h_c2 = st.columns(2)
@@ -1907,9 +1896,29 @@ else:
             </div>
         """, unsafe_allow_html=True)
 
-        riders_with_t = get_ridership_with_trips()
+        ridership_start_date = (date.today() - timedelta(days=1)).isoformat()
+        riders_with_t = get_ridership_with_trips(since_date=ridership_start_date)
         trips_with_r = get_trips_with_routes()
-        analytics = get_route_ridership_analytics()
+        analytics = get_route_ridership_analytics(since_date=ridership_start_date)
+
+        total_passengers = sum(
+            int(record["passengers"] or 0) for record in riders_with_t
+        )
+        trips_with_ridership = len({
+            record["trip_id"]
+            for record in riders_with_t
+            if record["trip_id"] is not None
+        })
+
+        st.markdown("### 📈 Recorded rider totals")
+        rider_total_col, record_count_col, trip_count_col = st.columns(3)
+        rider_total_col.metric("Total passengers recorded", f"{total_passengers:,}")
+        record_count_col.metric("Ridership entries", f"{len(riders_with_t):,}")
+        trip_count_col.metric("Trips with records", f"{trips_with_ridership:,}")
+        st.caption(
+            f"Showing records since {ridership_start_date} (yesterday). Passenger "
+            "counts are summed across trips, not deduplicated individuals."
+        )
 
         if analytics:
             st.markdown("### 📊 Route Ridership & Revenue Summary")

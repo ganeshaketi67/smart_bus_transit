@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from datetime import date
 
 
 # ============================================================
@@ -1053,7 +1054,7 @@ def delete_ridership(ridership_id):
     connection.close()
 
 
-def get_ridership_with_trips():
+def get_ridership_with_trips(since_date=None):
     """Return ridership records with the associated bus number."""
     connection = get_connection()
     records = connection.execute("""
@@ -1067,8 +1068,9 @@ def get_ridership_with_trips():
         FROM ridership
         LEFT JOIN trips ON trips.id = ridership.trip_id
         LEFT JOIN routes ON routes.id = trips.route_id
+        WHERE (? IS NULL OR ridership.date >= ?)
         ORDER BY ridership.date DESC, ridership.id DESC
-    """).fetchall()
+    """, (since_date, since_date)).fetchall()
     connection.close()
     return records
 
@@ -1077,9 +1079,17 @@ def get_ridership_with_trips():
 # ADVANCED ANALYTICS & NETWORK HELPERS
 # ============================================================
 
-def get_route_ridership_analytics():
+def get_route_ridership_analytics(since_date=None):
     """Return aggregated ridership, total trips, and daily averages per route."""
     connection = get_connection()
+    if since_date is None:
+        average_days_expression = "MAX(1, COUNT(DISTINCT ridership.date))"
+        query_parameters = (None, None)
+    else:
+        period_days = max(1, (date.today() - date.fromisoformat(since_date)).days + 1)
+        average_days_expression = "MAX(1, ?)"
+        query_parameters = (period_days, since_date, since_date)
+
     query = """
         SELECT
             routes.id AS route_id,
@@ -1096,15 +1106,17 @@ def get_route_ridership_analytics():
             COALESCE(AVG(ridership.passengers), 0) AS avg_passengers_per_record,
             ROUND(
                 CAST(COALESCE(SUM(ridership.passengers), 0) AS REAL) / 
-                MAX(1, COUNT(DISTINCT ridership.date)), 1
+                {average_days_expression}, 1
             ) AS avg_daily_passengers
         FROM routes
         LEFT JOIN trips ON trips.route_id = routes.id
-        LEFT JOIN ridership ON ridership.trip_id = trips.id
+        LEFT JOIN ridership
+            ON ridership.trip_id = trips.id
+            AND (? IS NULL OR ridership.date >= ?)
         GROUP BY routes.id
         ORDER BY total_passengers DESC
-    """
-    rows = connection.execute(query).fetchall()
+    """.format(average_days_expression=average_days_expression)
+    rows = connection.execute(query, query_parameters).fetchall()
     connection.close()
     return [dict(r) for r in rows]
 

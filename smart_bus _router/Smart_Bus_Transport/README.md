@@ -31,11 +31,11 @@ The app uses SQLite database storage (`database/smart_transit.db`).
 - **🗺️ Route Finder**: BFS-powered shortest journey planner with transfer and step-by-step connection itineraries.
 
 ### 🏢 2. Operator Control Center
-- **📊 Executive Dashboard**: KPI cards, real-time ridership trends, active fleet counter, and route passenger share.
+- **📊 Executive Dashboard**: Database-backed route, stop, trip, ridership, and fare-weighted revenue metrics from yesterday onward, with a manual refresh control.
 - **🚨 Overcrowded Bus Alert Desk**: Queue of passenger photo reports with one-click extra bus deployment.
 - **🚌 Routes & Stop Sequences**: Manage city lines, distances, and custom intermediate stop orders.
 - **📍 Stops & ⏱️ Trips**: Manage bus stops and departure timetables, including editing a trip's route code, bus, date, and times.
-- **👥 Ridership Logs**: Historical passenger load tracker per trip.
+- **👥 Ridership Logs**: Passenger totals and route averages use records from yesterday onward; daily averages include every calendar day in that period.
 - **⚡ Frequency Planner**: Calculates recommended trips/day using formula:
   $$\text{Recommended Trips/Day} = \lceil \text{Avg Daily Passengers} / \text{Target Bus Capacity} \rceil$$
 - **🗓️ Schedule & Conflicts**: OOP-based timetable collision and double-booking detection engine.
