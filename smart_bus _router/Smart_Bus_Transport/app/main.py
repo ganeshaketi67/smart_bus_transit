@@ -465,6 +465,50 @@ ridership = get_ridership()
 alerts = get_overcrowding_alerts()
 
 
+def _get_ridership_summary_since(start_date):
+    """Filter ridership and route analytics using the shared date window."""
+    ridership_records = [
+        record
+        for record in get_ridership_with_trips()
+        if record["date"] and record["date"] >= start_date
+    ]
+    route_analytics = [
+        dict(route) for route in get_route_ridership_analytics()
+    ]
+    days_in_period = max(
+        1, (date.today() - date.fromisoformat(start_date)).days + 1
+    )
+
+    passengers_by_route = {}
+    for record in ridership_records:
+        route_name = record["route_name"]
+        if route_name is not None:
+            passengers_by_route.setdefault(route_name, []).append(record)
+
+    for route in route_analytics:
+        route_records = passengers_by_route.get(route["route_name"], [])
+        passenger_counts = [
+            int(record["passengers"] or 0) for record in route_records
+        ]
+        route["total_passengers"] = sum(passenger_counts)
+        route["recorded_days"] = len({
+            record["date"] for record in route_records
+        })
+        route["avg_passengers_per_record"] = (
+            sum(passenger_counts) / len(passenger_counts)
+            if passenger_counts
+            else 0
+        )
+        route["avg_daily_passengers"] = round(
+            route["total_passengers"] / days_in_period, 1
+        )
+
+    route_analytics.sort(
+        key=lambda route: route["total_passengers"], reverse=True
+    )
+    return ridership_records, route_analytics
+
+
 def _get_route_schedule_rows(route_id):
     return [{
         "Bus Number": trip["bus_number"],
@@ -1007,9 +1051,11 @@ else:
 
         # KPI METRICS
         ridership_start_date = (date.today() - timedelta(days=1)).isoformat()
-        analytics = get_route_ridership_analytics(since_date=ridership_start_date)
+        dashboard_ridership, analytics = _get_ridership_summary_since(
+            ridership_start_date
+        )
         total_passengers = sum(
-            int(route["total_passengers"] or 0) for route in analytics
+            int(record["passengers"] or 0) for record in dashboard_ridership
         )
         pending_alerts_cnt = len([a for a in alerts if a["status"] == "Pending"])
 
@@ -1897,9 +1943,10 @@ else:
         """, unsafe_allow_html=True)
 
         ridership_start_date = (date.today() - timedelta(days=1)).isoformat()
-        riders_with_t = get_ridership_with_trips(since_date=ridership_start_date)
+        riders_with_t, analytics = _get_ridership_summary_since(
+            ridership_start_date
+        )
         trips_with_r = get_trips_with_routes()
-        analytics = get_route_ridership_analytics(since_date=ridership_start_date)
 
         total_passengers = sum(
             int(record["passengers"] or 0) for record in riders_with_t
